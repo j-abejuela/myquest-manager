@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyQuest Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+<style>
+  :root {
+    --bg-base: #0a0a0f;
+    --bg-surface: #111118;
+    --bg-card: #16161f;
+    --bg-elevated: #1c1c28;
+    --border: #2a2a3a;
+    --border-bright: #3a3a50;
+    --text-primary: #e8e8f0;
+    --text-secondary: #8888aa;
+    --text-muted: #555570;
+    --accent: #7c6aff;
+    --accent-glow: rgba(124,106,255,0.25);
+    --success: #22d3a0;
+    --warning: #f5a623;
+    --danger: #ff4d6d;
+    --danger-glow: rgba(255,77,109,0.2);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: 'Outfit', sans-serif; overflow-x: hidden; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg-base); }
+  ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+  /* Grid noise texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  #app { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* Header */
+  .app-header {
+    background: linear-gradient(135deg, #0f0f1a 0%, #12121e 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(20px);
+  }
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #7c6aff, #a855f7, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .logo span { font-weight: 400; opacity: 0.6; }
+
+  /* Tabs bar */
+  .tabs-bar {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    padding: 6px 12px;
+    gap: 4px;
+    min-height: 48px;
+    scrollbar-width: none;
+  }
+  .tabs-bar::-webkit-scrollbar { display: none; }
+
+  .tab-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+    position: relative;
+    white-space: nowrap;
+  }
+  .tab-btn.active {
+    color: #111;
+    border-color: transparent;
+  }
+  .tab-btn:hover:not(.active) { background: var(--bg-elevated); color: var(--text-primary); border-color: var(--border); }
+  .tab-close {
+    width: 16px; height: 16px;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.1s;
+    margin-left: 2px;
+  }
+  .tab-close:hover { background: var(--danger); color: white; }
+
+  .add-tab-btn {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    border: 1px dashed var(--border-bright);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.15s;
+    margin-left: 6px;
+  }
+  .add-tab-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+  /* Main content */
+  .main-content { flex: 1; padding: 16px; max-width: 1200px; margin: 0 auto; width: 100%; padding-bottom: 80px; }
+
+  /* Tab summary */
+  .tab-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .summary-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    text-align: center;
+  }
+  .summary-card .val { font-size: 1.5rem; font-weight: 700; font-family: 'Space Mono', monospace; }
+  .summary-card .lbl { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px; }
+
+  /* Task input row */
+  .task-input-row {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 14px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .task-input-row input, .task-input-row select {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    min-height: 40px;
+  }
+  .task-input-row input:focus, .task-input-row select:focus { border-color: var(--accent); }
+  .task-input-row input[type="text"] { flex: 1; min-width: 140px; }
+  .task-input-row input[type="date"] { width: 140px; color-scheme: dark; }
+  .task-input-row select { width: 130px; }
+  .task-input-row input[type="number"] { width: 80px; }
+  .add-task-btn {
+    background: linear-gradient(135deg, #7c6aff, #a855f7);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 8px 18px;
+    cursor: pointer;
+    min-height: 40px;
+    transition: opacity 0.15s, transform 0.1s;
+    white-space: nowrap;
+  }
+  .add-task-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .add-task-btn:active { transform: translateY(0); }
+
+  /* Task list */
+  .task-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .task-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .task-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
+  .task-card.overdue {
+    border-color: var(--danger) !important;
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(255,77,109,0.06) 100%);
+  }
+  .task-card.overdue::before {
+    content: 'OVERDUE';
+    position: absolute;
+    top: 0; right: 0;
+    background: var(--danger);
+    color: white;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 2px 8px;
+    border-radius: 0 12px 0 8px;
+    font-family: 'Space Mono', monospace;
+  }
+  .task-card.flash-highlight {
+    animation: flashPulse 2s ease-out;
+  }
+  @keyframes flashPulse {
+    0%, 100% { background: var(--bg-card); }
+    15%, 45%, 75% { background: rgba(245,166,35,0.25); border-color: #f5a623; }
+    30%, 60% { background: var(--bg-card); border-color: var(--border); }
+  }
+
+  .task-color-bar { width: 4px; height: 40px; border-radius: 2px; flex-shrink: 0; }
+
+  .task-main { flex: 1; min-width: 0; }
+  .task-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text;
+  }
+  .task-name.done-text { text-decoration: line-through; color: var(--text-muted); }
+  .task-meta { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
+  .task-meta span { font-size: 0.7rem; color: var(--text-muted); }
+
+  .task-progress-wrap { display: flex; align-items: center; gap: 8px; width: 120px; flex-shrink: 0; }
+  .progress-bar-bg { flex: 1; height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+  .progress-pct { font-size: 0.7rem; font-family: 'Space Mono', monospace; color: var(--text-secondary); min-width: 28px; text-align: right; }
+
+  .task-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .task-select { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.72rem; padding: 4px 6px; cursor: pointer; font-family: 'Outfit', sans-serif; }
+  .task-prog-input { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.72rem; padding: 4px 6px; width: 54px; font-family: 'Space Mono', monospace; }
+  .task-delete-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px; transition: all 0.1s; }
+  .task-delete-btn:hover { background: var(--danger-glow); color: var(--danger); }
+
+  /* Status badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+  .badge-pending { background: rgba(100,100,120,0.3); color: #8888aa; }
+  .badge-ongoing { background: rgba(59,130,246,0.2); color: #60a5fa; }
+  .badge-done { background: rgba(34,211,160,0.2); color: #22d3a0; }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: rgba(17,17,24,0.95);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    z-index: 100;
+  }
+  .nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .nav-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .nav-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .nav-btn svg { width: 16px; height: 16px; }
+
+  /* Modal overlay */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5,5,10,0.85);
+    backdrop-filter: blur(8px);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: fadeIn 0.15s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-bright);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.2s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-title { font-size: 1.1rem; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; padding: 4px; border-radius: 6px; transition: all 0.1s; }
+  .modal-close:hover { color: var(--text-primary); background: var(--bg-elevated); }
+  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+
+  /* Dashboard */
+  #dashboard-view { display: none; }
+  #dashboard-view.active { display: block; }
+  #tasks-view { display: none; }
+  #tasks-view.active { display: block; }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .dash-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+  }
+  .dash-card.full { grid-column: 1 / -1; }
+  .dash-card h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 14px; font-family: 'Space Mono', monospace; }
+
+  /* Mentor modal */
+  .mentor-quote {
+    font-size: 1.1rem;
+    font-style: italic;
+    line-height: 1.7;
+    color: var(--text-primary);
+    border-left: 3px solid var(--accent);
+    padding-left: 16px;
+    margin: 16px 0;
+  }
+  .mentor-author { font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; }
+
+  /* Settings panel */
+  .settings-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    position: absolute;
+    right: 16px;
+    top: 56px;
+    width: 220px;
+    z-index: 150;
+    animation: slideUp 0.15s ease;
+  }
+  .settings-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: all 0.1s;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+  }
+  .settings-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
+
+  /* FC overrides for dark */
+  .fc { --fc-border-color: var(--border); --fc-button-bg-color: var(--bg-elevated); --fc-button-border-color: var(--border); --fc-button-text-color: var(--text-primary); --fc-button-hover-bg-color: var(--accent); --fc-button-hover-border-color: var(--accent); --fc-button-active-bg-color: var(--accent); --fc-page-bg-color: var(--bg-card); --fc-neutral-bg-color: var(--bg-elevated); --fc-today-bg-color: rgba(124,106,255,0.1); --fc-event-bg-color: var(--accent); --fc-event-border-color: var(--accent); --fc-event-text-color: white; }
+  .fc .fc-toolbar-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); font-family: 'Outfit', sans-serif; }
+  .fc .fc-col-header-cell-cushion, .fc .fc-daygrid-day-number { color: var(--text-secondary); font-size: 0.75rem; }
+  .fc-event { cursor: pointer; font-size: 0.7rem !important; border-radius: 4px !important; }
+  .fc .fc-daygrid-day.fc-day-today { background: rgba(124,106,255,0.08); }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+  .empty-state p { font-size: 0.9rem; }
+
+  /* Input validation highlight */
+  .input-error { border-color: var(--danger) !important; }
+
+  @media (max-width: 640px) {
+    .tab-summary { grid-template-columns: repeat(2, 1fr); }
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .task-input-row { gap: 6px; }
+    .task-progress-wrap { display: none; }
+    .task-card { flex-wrap: wrap; }
+  }
+  @media (max-width: 480px) {
+    .task-controls { flex-wrap: wrap; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo">MyQuest <span>Manager</span></div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div id="week-indicator" style="font-size:0.7rem;color:var(--text-muted);font-family:'Space Mono',monospace;"></div>
+      <button id="settings-btn" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;color:var(--text-secondary);padding:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
+    </div>
+    <div id="settings-panel" class="settings-panel" style="display:none;">
+      <button class="settings-item" onclick="exportData()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export to JSON
+      </button>
+      <label class="settings-item" style="cursor:pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Import from JSON
+        <input type="file" accept=".json" id="import-input" style="display:none;" onchange="importData(this)">
+      </label>
+      <div style="height:1px;background:var(--border);margin:4px 0;"></div>
+      <button class="settings-item" onclick="showMentor(true)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        Show Mentor
+      </button>
+      <button class="settings-item" onclick="clearAllData()" style="color:var(--danger);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        Clear All Data
+      </button>
+    </div>
+  </header>
+
+  <!-- Tabs bar -->
+  <div class="tabs-bar" id="tabs-bar">
+    <div id="tab-buttons" style="display:flex;align-items:center;gap:4px;flex-shrink:0;"></div>
+    <!-- Inline new-tab creator -->
+    <div id="inline-tab-creator" style="display:flex;align-items:center;gap:6px;margin-left:6px;flex-shrink:0;">
+      <button class="add-tab-btn" id="add-tab-trigger" onclick="showInlineTabCreator()" title="New Tab">+</button>
+    </div>
+    <div id="new-tab-inline" style="display:none;align-items:center;gap:6px;margin-left:4px;padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--accent);border-radius:10px;animation:slideUp 0.15s ease;flex-shrink:0;">
+      <!-- Color pills -->
+      <div id="inline-color-pills" style="display:flex;gap:4px;align-items:center;"></div>
+      <div style="width:1px;height:20px;background:var(--border);"></div>
+      <!-- Name input -->
+      <input id="inline-tab-name" type="text" placeholder="Tab name…" autocomplete="off"
+        style="background:transparent;border:none;outline:none;color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.82rem;font-weight:600;width:110px;padding:2px 0;"
+        onkeydown="handleInlineTabKey(event)">
+      <!-- Confirm -->
+      <button onclick="confirmInlineTab()" title="Create tab"
+        style="background:var(--accent);border:none;border-radius:6px;color:white;font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;">
+        Add
+      </button>
+      <!-- Cancel -->
+      <button onclick="hideInlineTabCreator()" title="Cancel"
+        style="background:transparent;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;padding:2px 4px;line-height:1;">
+        ✕
+      </button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <main class="main-content">
+
+    <!-- Tasks view -->
+    <div id="tasks-view" class="active">
+      <div class="tab-summary" id="tab-summary"></div>
+      <div class="task-input-row" id="task-input-row">
+        <input type="text" id="new-task-name" placeholder="Task name..." autocomplete="off">
+        <input type="date" id="new-task-due" title="Due Date">
+        <select id="new-task-status">
+          <option value="Pending">Pending</option>
+          <option value="On Going">On Going</option>
+          <option value="Done">Done</option>
+        </select>
+        <input type="number" id="new-task-progress" min="0" max="100" value="0" placeholder="%" title="Progress %">
+        <button class="add-task-btn" onclick="addTask()">+ Add Task</button>
+      </div>
+      <div class="task-list" id="task-list"></div>
+    </div>
+
+    <!-- Dashboard view -->
+    <div id="dashboard-view">
+      <div class="dashboard-grid">
+        <div class="dash-card full">
+          <h3>Global Productivity</h3>
+          <canvas id="global-chart" height="200"></canvas>
+        </div>
+        <div class="dash-card">
+          <h3>Status Breakdown</h3>
+          <canvas id="status-chart" height="180"></canvas>
+        </div>
+        <div class="dash-card">
+          <h3>Tab Completion</h3>
+          <canvas id="tab-chart" height="180"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom nav -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" id="nav-tasks" onclick="switchView('tasks')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      Tasks
+    </button>
+    <button class="nav-btn" id="nav-dashboard" onclick="switchView('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-btn" id="nav-calendar" onclick="openCalendar()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Calendar
+    </button>
+  </nav>
+
+</div>
+
+<!-- ─── Modals ─── -->
+
+<!-- Rename Tab Modal -->
+<div id="rename-tab-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <span class="modal-title">Rename Tab</span>
+      <button class="modal-close" onclick="closeModal('rename-tab-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:6px;">New Name</label>
+      <input type="text" id="rename-tab-input" placeholder="Tab name..." style="width:100%;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:0.9rem;padding:10px 14px;outline:none;" onkeydown="if(event.key==='Enter')confirmRenameTab()">
+      <button onclick="confirmRenameTab()" style="margin-top:16px;width:100%;background:linear-gradient(135deg,#7c6aff,#a855f7);border:none;border-radius:10px;color:white;font-family:'Outfit',sans-serif;font-weight:600;font-size:0.9rem;padding:12px;cursor:pointer;">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calendar Modal -->
+<div id="calendar-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-box" style="max-width:860px;">
+    <div class="modal-header">
+      <span class="modal-title">📅 Global Calendar — All Tasks</span>
+      <button class="modal-close" onclick="closeModal('calendar-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:16px;">
+      <div id="calendar-container"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Mentor Modal -->
+<div id="mentor-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <span class="modal-title">✨ Your Mentor Says…</span>
+      <button class="modal-close" onclick="closeModal('mentor-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="mentor-body"></div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let state = {
+  tabs: [],
+  currentTabId: null,
+  lastChecked: null
+};
+
+const TAB_COLORS = [
+  '#7c6aff','#a855f7','#ec4899','#f43f5e','#f97316',
+  '#eab308','#22c55e','#14b8a6','#0ea5e9','#6366f1'
+];
+
+const STATUS_LIST = ['Pending','On Going','Done'];
+
+const QUOTES = [
+  { text: "I can do all things through Christ who strengthens me.", author: "Philippians 4:13" },
+  { text: "Commit to the Lord whatever you do, and he will establish your plans.", author: "Proverbs 16:3" },
+  { text: "For I know the plans I have for you, plans to prosper you and not to harm you.", author: "Jeremiah 29:11" },
+  { text: "Be strong and courageous. Do not be afraid; do not be discouraged.", author: "Joshua 1:9" },
+  { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
+  { text: "Innovation distinguishes between a leader and a follower.", author: "Steve Jobs" },
+  { text: "Stay hungry, stay foolish.", author: "Steve Jobs" },
+  { text: "When something is important enough, you do it even if the odds are not in your favor.", author: "Elon Musk" },
+  { text: "The first step is to establish that something is possible; then probability will occur.", author: "Elon Musk" },
+  { text: "Failure is an option here. If things are not failing, you are not innovating enough.", author: "Elon Musk" },
+  { text: "Persistence is the twin sister of excellence. One is a matter of quality; the other, a matter of time.", author: "Marabel Morgan" },
+  { text: "Success is the sum of small efforts, repeated day in and day out.", author: "Robert Collier" },
+  { text: "Discipline is the bridge between goals and accomplishment.", author: "Jim Rohn" },
+  { text: "We are what we repeatedly do. Excellence, then, is not an act but a habit.", author: "Aristotle" },
+  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+  { text: "Hard work beats talent when talent doesn't work hard.", author: "Tim Notke" },
+  { text: "Push yourself, because no one else is going to do it for you.", author: "Unknown" },
+  { text: "Great things never come from comfort zones.", author: "Unknown" },
+  { text: "Technology is best when it brings people together.", author: "Matt Mullenweg" },
+  { text: "The science of today is the technology of tomorrow.", author: "Edward Teller" },
+];
+
+// ─── PERSISTENCE ──────────────────────────────────────────────────────────────
+function saveState() {
+  localStorage.setItem('myquest_v2', JSON.stringify(state));
+}
+function loadState() {
+  const raw = localStorage.getItem('myquest_v2');
+  if (raw) {
+    try { state = JSON.parse(raw); } catch(e) {}
+  }
+  // Ensure defaults
+  if (!state.tabs) state.tabs = [];
+  if (!state.tabs.length) addDefaultTabs();
+  if (!state.currentTabId || !state.tabs.find(t => t.id === state.currentTabId)) {
+    state.currentTabId = state.tabs[0]?.id || null;
+  }
+}
+function addDefaultTabs() {
+  const defaults = [
+    { name: 'School', color: '#7c6aff' },
+    { name: 'Business', color: '#22c55e' },
+    { name: 'Personal', color: '#ec4899' }
+  ];
+  defaults.forEach(d => {
+    state.tabs.push({ id: uid(), name: d.name, color: d.color, tasks: [] });
+  });
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+function today() { return new Date().toISOString().split('T')[0]; }
+function isOverdue(task) {
+  if (!task.dueDate || task.status === 'Done') return false;
+  return task.dueDate < today();
+}
+function currentTab() { return state.tabs.find(t => t.id === state.currentTabId); }
+
+function sortTasks(tasks) {
+  const overdue = tasks.filter(isOverdue).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+  const rest = tasks.filter(t => !isOverdue(t)).sort((a,b) => {
+    if (!a.dueDate && !b.dueDate) return 0;
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
+  });
+  return [...overdue, ...rest];
+}
+
+function statusClass(s) {
+  if (s === 'Done') return 'badge-done';
+  if (s === 'On Going') return 'badge-ongoing';
+  return 'badge-pending';
+}
+
+function progressColor(p) {
+  if (p >= 100) return '#22d3a0';
+  if (p >= 60) return '#7c6aff';
+  if (p >= 30) return '#f97316';
+  return '#f43f5e';
+}
+
+// ─── AUDIO ────────────────────────────────────────────────────────────────────
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playSuccessDing() {
+  try {
+    const ctx = getAudio();
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.12;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.3, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    });
+  } catch(e) {}
+}
+
+// ─── CONFETTI ─────────────────────────────────────────────────────────────────
+function fireConfetti() {
+  confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#7c6aff','#a855f7','#22d3a0','#ec4899','#f5a623'] });
+  setTimeout(() => confetti({ particleCount: 60, spread: 50, origin: { y: 0.6 }, startVelocity: 45 }), 300);
+}
+
+// ─── TAB MANAGEMENT ──────────────────────────────────────────────────────────
+let pendingTabColor = TAB_COLORS[0];
+let renamingTabId = null;
+
+function showInlineTabCreator() {
+  document.getElementById('add-tab-trigger').style.display = 'none';
+  const creator = document.getElementById('new-tab-inline');
+  creator.style.display = 'flex';
+  renderInlineColorPills();
+  const inp = document.getElementById('inline-tab-name');
+  inp.value = '';
+  setTimeout(() => inp.focus(), 60);
+  // close on outside click
+  setTimeout(() => document.addEventListener('click', outsideInlineHandler), 100);
+}
+
+function hideInlineTabCreator() {
+  document.getElementById('new-tab-inline').style.display = 'none';
+  document.getElementById('add-tab-trigger').style.display = 'flex';
+  document.removeEventListener('click', outsideInlineHandler);
+}
+
+function outsideInlineHandler(e) {
+  const creator = document.getElementById('new-tab-inline');
+  if (!creator.contains(e.target) && e.target.id !== 'add-tab-trigger') {
+    hideInlineTabCreator();
+  }
+}
+
+function renderInlineColorPills() {
+  const el = document.getElementById('inline-color-pills');
+  el.innerHTML = TAB_COLORS.map(c => `
+    <div onclick="selectInlineColor('${c}',this)" title="${c}"
+      style="width:16px;height:16px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${c === pendingTabColor ? 'white' : 'transparent'};transition:transform 0.1s,border-color 0.1s;flex-shrink:0;"
+      onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">
+    </div>
+  `).join('');
+}
+
+function selectInlineColor(color, el) {
+  pendingTabColor = color;
+  document.querySelectorAll('#inline-color-pills div').forEach(d => d.style.borderColor = 'transparent');
+  el.style.borderColor = 'white';
+}
+
+function handleInlineTabKey(e) {
+  if (e.key === 'Enter') confirmInlineTab();
+  if (e.key === 'Escape') hideInlineTabCreator();
+}
+
+function confirmInlineTab() {
+  const name = document.getElementById('inline-tab-name').value.trim();
+  if (!name) {
+    const inp = document.getElementById('inline-tab-name');
+    inp.style.borderBottom = '2px solid var(--danger)';
+    inp.focus();
+    setTimeout(() => inp.style.borderBottom = '', 1000);
+    return;
+  }
+  state.tabs.push({ id: uid(), name, color: pendingTabColor, tasks: [] });
+  state.currentTabId = state.tabs[state.tabs.length - 1].id;
+  pendingTabColor = TAB_COLORS[Math.floor(Math.random() * TAB_COLORS.length)];
+  saveState();
+  hideInlineTabCreator();
+  renderAll();
+}
+
+// legacy alias (settings still calls addTab via mentor)
+function addTab() { showInlineTabCreator(); }
+
+function deleteTab(id) {
+  if (state.tabs.length <= 1) { alert('You must have at least one tab.'); return; }
+  if (!confirm('Delete this tab and all its tasks?')) return;
+  state.tabs = state.tabs.filter(t => t.id !== id);
+  if (state.currentTabId === id) state.currentTabId = state.tabs[0].id;
+  saveState();
+  renderAll();
+}
+
+function renameTab(id) {
+  renamingTabId = id;
+  const tab = state.tabs.find(t => t.id === id);
+  document.getElementById('rename-tab-input').value = tab.name;
+  openModal('rename-tab-modal');
+  setTimeout(() => document.getElementById('rename-tab-input').focus(), 100);
+}
+
+function confirmRenameTab() {
+  const name = document.getElementById('rename-tab-input').value.trim();
+  if (!name) return;
+  const tab = state.tabs.find(t => t.id === renamingTabId);
+  if (tab) tab.name = name;
+  saveState();
+  closeModal('rename-tab-modal');
+  renderAll();
+}
+
+function switchTab(id) {
+  state.currentTabId = id;
+  saveState();
+  renderAll();
+}
+
+// ─── TASK MANAGEMENT ─────────────────────────────────────────────────────────
+function addTask() {
+  const nameEl = document.getElementById('new-task-name');
+  const name = nameEl.value.trim();
+  if (!name) { nameEl.classList.add('input-error'); nameEl.focus(); return; }
+  nameEl.classList.remove('input-error');
+
+  const tab = currentTab();
+  if (!tab) return;
+
+  let status = document.getElementById('new-task-status').value;
+  let progress = parseInt(document.getElementById('new-task-progress').value) || 0;
+  if (status === 'Done') progress = 100;
+  if (progress === 100) status = 'Done';
+  progress = Math.min(100, Math.max(0, progress));
+
+  const task = {
+    id: uid(),
+    name,
+    dateAdded: today(),
+    dueDate: document.getElementById('new-task-due').value || '',
+    status,
+    progress
+  };
+
+  tab.tasks.push(task);
+  saveState();
+
+  // Reset
+  nameEl.value = '';
+  document.getElementById('new-task-due').value = '';
+  document.getElementById('new-task-status').value = 'Pending';
+  document.getElementById('new-task-progress').value = '0';
+
+  if (status === 'Done') { fireConfetti(); playSuccessDing(); }
+  renderTasks();
+  updateSummary();
+}
+
+function updateTask(tabId, taskId, field, value) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const task = tab.tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  const wasDone = task.status === 'Done';
+
+  if (field === 'status') {
+    task.status = value;
+    if (value === 'Done') task.progress = 100;
+  } else if (field === 'progress') {
+    const p = Math.min(100, Math.max(0, parseInt(value) || 0));
+    task.progress = p;
+    if (p === 100) task.status = 'Done';
+    else if (task.status === 'Done') task.status = 'On Going';
+  } else if (field === 'name') {
+    task.name = value;
+  }
+
+  const nowDone = task.status === 'Done';
+  saveState();
+  renderTasks();
+  updateSummary();
+
+  if (!wasDone && nowDone) {
+    fireConfetti();
+    playSuccessDing();
+  }
+}
+
+function deleteTask(tabId, taskId) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.tasks = tab.tasks.filter(t => t.id !== taskId);
+  saveState();
+  renderTasks();
+  updateSummary();
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderTabButtons();
+  renderSummary();
+  renderTasks();
+  if (document.getElementById('dashboard-view').classList.contains('active')) {
+    renderDashboard();
+  }
+}
+
+function renderTabButtons() {
+  const el = document.getElementById('tab-buttons');
+  el.innerHTML = state.tabs.map(tab => {
+    const isActive = tab.id === state.currentTabId;
+    const activeBg = isActive ? tab.color : '';
+    const activeStyle = isActive ? `background:${tab.color};color:#111;` : '';
+    return `
+    <button class="tab-btn ${isActive ? 'active' : ''}" style="${activeStyle}" onclick="switchTab('${tab.id}')">
+      ${!isActive ? `<span style="width:8px;height:8px;border-radius:50%;background:${tab.color};flex-shrink:0;display:inline-block;"></span>` : ''}
+      <span ondblclick="event.stopPropagation();renameTab('${tab.id}')">${escHtml(tab.name)}</span>
+      <button class="tab-close" onclick="event.stopPropagation();deleteTab('${tab.id}')" title="Delete tab" style="${isActive ? 'color:#111;opacity:0.6;' : ''}">✕</button>
+    </button>
+  `}).join('');
+}
+
+function renderSummary() {
+  const tab = currentTab();
+  if (!tab) return;
+  const tasks = tab.tasks;
+  const total = tasks.length;
+  const done = tasks.filter(t => t.status === 'Done').length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  const overdue = tasks.filter(isOverdue).length;
+  const ongoing = tasks.filter(t => t.status === 'On Going').length;
+
+  document.getElementById('tab-summary').innerHTML = `
+    <div class="summary-card">
+      <div class="val" style="color:${tab.color}">${total}</div>
+      <div class="lbl">Total Tasks</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:#22d3a0">${pct}%</div>
+      <div class="lbl">Completed</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:#60a5fa">${ongoing}</div>
+      <div class="lbl">On Going</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:${overdue ? 'var(--danger)' : 'var(--text-muted)'}">${overdue}</div>
+      <div class="lbl">Overdue</div>
+    </div>
+  `;
+}
+function updateSummary() { renderSummary(); }
+
+function renderTasks() {
+  const tab = currentTab();
+  const el = document.getElementById('task-list');
+  if (!tab) { el.innerHTML = ''; return; }
+
+  const sorted = sortTasks([...tab.tasks]);
+
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>No tasks yet. Add your first quest above!</p></div>`;
+    return;
+  }
+
+  el.innerHTML = sorted.map(task => {
+    const over = isOverdue(task);
+    const pColor = progressColor(task.progress);
+    return `
+    <div class="task-card ${over ? 'overdue' : ''}" id="task-${task.id}" data-task-id="${task.id}">
+      <div class="task-color-bar" style="background:${tab.color};"></div>
+      <div class="task-main">
+        <div class="task-name ${task.status === 'Done' ? 'done-text' : ''}" contenteditable="true"
+          onblur="updateTask('${tab.id}','${task.id}','name',this.textContent.trim())"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+        >${escHtml(task.name)}</div>
+        <div class="task-meta">
+          <span>Added: ${task.dateAdded}</span>
+          ${task.dueDate ? `<span style="color:${over ? 'var(--danger)' : 'var(--text-muted)'}">Due: ${task.dueDate}</span>` : ''}
+          <span class="badge ${statusClass(task.status)}">${task.status}</span>
+        </div>
+      </div>
+      <div class="task-progress-wrap">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width:${task.progress}%;background:${pColor};"></div>
+        </div>
+        <span class="progress-pct">${task.progress}%</span>
+      </div>
+      <div class="task-controls">
+        <select class="task-select" onchange="updateTask('${tab.id}','${task.id}','status',this.value)">
+          ${STATUS_LIST.map(s => `<option ${s === task.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <input type="number" class="task-prog-input" value="${task.progress}" min="0" max="100"
+          onchange="updateTask('${tab.id}','${task.id}','progress',this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()"
+          title="Progress %">
+        <button class="task-delete-btn" onclick="deleteTask('${tab.id}','${task.id}')" title="Delete task">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        </button>
+      </div>
+    </div>
+    `;
+  }).join('');
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+let globalChart = null, statusChart = null, tabChart = null;
+
+function renderDashboard() {
+  const allTasks = state.tabs.flatMap(t => t.tasks);
+  const done = allTasks.filter(t => t.status === 'Done').length;
+  const ongoing = allTasks.filter(t => t.status === 'On Going').length;
+  const pending = allTasks.filter(t => t.status === 'Pending').length;
+
+  // Global bar chart by tab
+  const labels = state.tabs.map(t => t.name);
+  const completionData = state.tabs.map(t => {
+    const tasks = t.tasks;
+    if (!tasks.length) return 0;
+    return Math.round(tasks.filter(x => x.status === 'Done').length / tasks.length * 100);
+  });
+  const bgColors = state.tabs.map(t => t.color + 'bb');
+  const borderColors = state.tabs.map(t => t.color);
+
+  const gcCtx = document.getElementById('global-chart').getContext('2d');
+  if (globalChart) globalChart.destroy();
+  globalChart = new Chart(gcCtx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '% Completed',
+        data: completionData,
+        backgroundColor: bgColors,
+        borderColor: borderColors,
+        borderWidth: 2,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, max: 100, ticks: { color: '#8888aa', callback: v => v + '%' }, grid: { color: '#2a2a3a' } },
+        x: { ticks: { color: '#8888aa' }, grid: { color: '#2a2a3a' } }
+      }
+    }
+  });
+
+  // Status doughnut
+  const scCtx = document.getElementById('status-chart').getContext('2d');
+  if (statusChart) statusChart.destroy();
+  statusChart = new Chart(scCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Done','On Going','Pending'],
+      datasets: [{ data: [done, ongoing, pending], backgroundColor: ['#22d3a0','#60a5fa','#8888aa'], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#8888aa', font: { size: 11 } } } }
+    }
+  });
+
+  // Tab completion polar
+  const tcCtx = document.getElementById('tab-chart').getContext('2d');
+  if (tabChart) tabChart.destroy();
+  tabChart = new Chart(tcCtx, {
+    type: 'polarArea',
+    data: {
+      labels,
+      datasets: [{ data: completionData, backgroundColor: bgColors, borderColor: borderColors, borderWidth: 1 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { color: '#8888aa', font: { size: 11 } } } },
+      scales: { r: { ticks: { display: false }, grid: { color: '#2a2a3a' } } }
+    }
+  });
+}
+
+// ─── VIEW SWITCHING ───────────────────────────────────────────────────────────
+function switchView(view) {
+  const tasksView = document.getElementById('tasks-view');
+  const dashView = document.getElementById('dashboard-view');
+  const navTasks = document.getElementById('nav-tasks');
+  const navDash = document.getElementById('nav-dashboard');
+
+  if (view === 'tasks') {
+    tasksView.classList.add('active');
+    dashView.classList.remove('active');
+    navTasks.classList.add('active');
+    navDash.classList.remove('active');
+  } else {
+    tasksView.classList.remove('active');
+    dashView.classList.add('active');
+    navTasks.classList.remove('active');
+    navDash.classList.add('active');
+    renderDashboard();
+  }
+}
+
+// ─── CALENDAR ─────────────────────────────────────────────────────────────────
+let calendarInstance = null;
+
+function openCalendar() {
+  openModal('calendar-modal');
+  setTimeout(() => {
+    const container = document.getElementById('calendar-container');
+    container.innerHTML = '';
+    if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
+
+    const events = [];
+    state.tabs.forEach(tab => {
+      tab.tasks.forEach(task => {
+        if (task.dueDate) {
+          events.push({
+            id: task.id,
+            title: task.name,
+            start: task.dueDate,
+            backgroundColor: tab.color,
+            borderColor: tab.color,
+            extendedProps: { tabId: tab.id, taskId: task.id }
+          });
+        }
+      });
+    });
+
+    calendarInstance = new FullCalendar.Calendar(container, {
+      initialView: 'dayGridMonth',
+      headerToolbar: { left: 'prev,next', center: 'title', right: 'dayGridMonth,listWeek' },
+      events,
+      eventClick: function(info) {
+        const { tabId, taskId } = info.event.extendedProps;
+        closeModal('calendar-modal');
+        teleportToTask(tabId, taskId);
+      },
+      height: 'auto',
+      themeSystem: 'standard',
+    });
+    calendarInstance.render();
+  }, 50);
+}
+
+function teleportToTask(tabId, taskId) {
+  // Switch view and tab
+  switchView('tasks');
+  state.currentTabId = tabId;
+  saveState();
+  renderAll();
+
+  // Scroll and flash
+  setTimeout(() => {
+    const el = document.getElementById(`task-${taskId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('flash-highlight');
+      setTimeout(() => el.classList.remove('flash-highlight'), 2100);
+    }
+  }, 150);
+}
+
+// ─── MENTOR ───────────────────────────────────────────────────────────────────
+function checkMentor() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 1=Mon
+  const date = now.getDate();
+  const isMonday = day === 1;
+  const isFirstOfMonth = date === 1;
+
+  const lastChecked = state.lastChecked ? new Date(state.lastChecked) : null;
+  const isNew = !lastChecked ||
+    (isMonday && lastChecked.getDay() !== 1) ||
+    (isFirstOfMonth && lastChecked.getDate() !== 1);
+
+  if (isNew || isMonday || isFirstOfMonth) {
+    state.lastChecked = now.toISOString();
+    saveState();
+    showMentor(false);
+  }
+}
+
+function showMentor(forceShow) {
+  const allTasks = state.tabs.flatMap(t => t.tasks);
+  const recentDone = allTasks.filter(t => t.status === 'Done').length;
+  const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+
+  const now = new Date();
+  const isMonday = now.getDay() === 1;
+  const isFirst = now.getDate() === 1;
+  let trigger = forceShow ? 'your request' : isFirst ? 'a new month' : isMonday ? 'a new week' : 'your journey';
+
+  document.getElementById('mentor-body').innerHTML = `
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:3rem;margin-bottom:8px;">🌟</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">
+        ${trigger === 'your request' ? 'Mentor Report' : `New ${isFirst ? 'Month' : 'Week'} — Let's Go!`}
+      </div>
+    </div>
+    <div style="background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
+      <div style="font-size:2.2rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--success);">${recentDone}</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">Tasks completed so far! Keep going. 💪</div>
+    </div>
+    <blockquote class="mentor-quote">"${quote.text}"</blockquote>
+    <div class="mentor-author">— ${quote.author}</div>
+    <button onclick="closeModal('mentor-modal')" style="margin-top:24px;width:100%;background:linear-gradient(135deg,#7c6aff,#a855f7);border:none;border-radius:10px;color:white;font-family:'Outfit',sans-serif;font-weight:600;font-size:0.9rem;padding:12px;cursor:pointer;">Let's Do This! 🚀</button>
+  `;
+  openModal('mentor-modal');
+}
+
+// ─── MODAL HELPERS ────────────────────────────────────────────────────────────
+function openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// Close on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) closeModal(this.id);
+  });
+});
+
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
+document.getElementById('settings-btn').addEventListener('click', function(e) {
+  e.stopPropagation();
+  const panel = document.getElementById('settings-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', function() {
+  document.getElementById('settings-panel').style.display = 'none';
+});
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `myquest-export-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  document.getElementById('settings-panel').style.display = 'none';
+}
+
+function importData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!imported.tabs) throw new Error('Invalid format');
+      if (confirm('This will replace all current data. Continue?')) {
+        state = imported;
+        saveState();
+        renderAll();
+        alert('Data imported successfully!');
+      }
+    } catch(err) {
+      alert('Invalid JSON file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+  document.getElementById('settings-panel').style.display = 'none';
+}
+
+function clearAllData() {
+  if (!confirm('Clear ALL data? This cannot be undone!')) return;
+  state = { tabs: [], currentTabId: null, lastChecked: null };
+  addDefaultTabs();
+  state.currentTabId = state.tabs[0].id;
+  saveState();
+  renderAll();
+  document.getElementById('settings-panel').style.display = 'none';
+}
+
+// ─── WEEK INDICATOR ───────────────────────────────────────────────────────────
+function updateWeekIndicator() {
+  const now = new Date();
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('week-indicator').textContent =
+    `${days[now.getDay()]} ${months[now.getMonth()]} ${now.getDate()}`;
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+function init() {
+  loadState();
+  updateWeekIndicator();
+  renderAll();
+
+  // Set today as default date added display
+  setTimeout(() => checkMentor(), 800);
+}
+
+init();
+</script>
+</body>
+</html>
