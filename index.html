@@ -270,9 +270,8 @@
     flex: 1;
     min-width: 0;
     display: flex;
-    flex-wrap: wrap;        /* horizontal first, then wrap down */
-    align-items: baseline;
-    gap: 4px 10px;          /* row-gap col-gap */
+    flex-direction: column;  /* name on top, dates below — never overlapping */
+    gap: 3px;
   }
   .task-name {
     font-weight: 600;
@@ -282,16 +281,13 @@
     overflow-wrap: break-word;
     cursor: text;
     line-height: 1.35;
-    flex-shrink: 1;         /* can shrink to share space */
-    min-width: 80px;        /* never collapse too small */
   }
   .task-name.done-text { text-decoration: line-through; color: var(--text-muted); }
   .task-meta {
     display: flex;
     gap: 6px;
-    flex-wrap: wrap;        /* meta items also go horizontal first */
+    flex-wrap: wrap;
     align-items: center;
-    flex-shrink: 0;         /* try to stay on same row as name */
   }
   .task-meta span { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
 
@@ -1057,10 +1053,8 @@ function renderTasks() {
           <span>Added: ${task.dateAdded}</span>
           ${task.dueDate ? `<span style="color:${over ? 'var(--danger)' : 'var(--text-muted)'}">Due: ${task.dueDate}</span>` : ''}
           <span class="badge ${statusClass(task.status)}">${task.status}</span>
+          <span style="font-family:'Space Mono',monospace;font-weight:700;font-size:0.7rem;color:${pColor}">${task.progress}%</span>
         </div>
-      </div>
-      <div class="task-progress-wrap">
-        <span class="progress-pct" style="color:${pColor}">${task.progress}%</span>
       </div>
       <div class="task-controls">
         <select class="task-select" onchange="updateTask('${tab.id}','${task.id}','status',this.value)">
