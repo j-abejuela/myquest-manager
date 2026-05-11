@@ -266,19 +266,34 @@
 
   .task-color-bar { width: 4px; height: 40px; border-radius: 2px; flex-shrink: 0; }
 
-  .task-main { flex: 1; min-width: 0; }
+  .task-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;        /* horizontal first, then wrap down */
+    align-items: baseline;
+    gap: 4px 10px;          /* row-gap col-gap */
+  }
   .task-name {
     font-weight: 600;
     font-size: 0.9rem;
-    white-space: normal;       /* allow wrapping */
-    word-break: break-word;    /* break very long words */
+    white-space: normal;
+    word-break: break-word;
     overflow-wrap: break-word;
     cursor: text;
     line-height: 1.35;
+    flex-shrink: 1;         /* can shrink to share space */
+    min-width: 80px;        /* never collapse too small */
   }
   .task-name.done-text { text-decoration: line-through; color: var(--text-muted); }
-  .task-meta { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
-  .task-meta span { font-size: 0.7rem; color: var(--text-muted); }
+  .task-meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;        /* meta items also go horizontal first */
+    align-items: center;
+    flex-shrink: 0;         /* try to stay on same row as name */
+  }
+  .task-meta span { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
 
   .task-progress-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .progress-bar-bg { display: none; } /* hidden — replaced by water-fill card background */
