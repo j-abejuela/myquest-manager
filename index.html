@@ -220,6 +220,23 @@
     position: relative;
     overflow: hidden;
   }
+
+  /* Water-fill: a pseudo-element fills left→right based on CSS variable --prog */
+  .task-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: var(--fill-color, rgba(124,106,255,0.13));
+    width: var(--prog, 0%);
+    transition: width 0.5s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* All direct children sit above the fill layer */
+  .task-card > * { position: relative; z-index: 1; }
+
   .task-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
   .task-card.overdue {
     border-color: var(--danger) !important;
@@ -253,19 +270,19 @@
   .task-name {
     font-weight: 600;
     font-size: 0.9rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;       /* allow wrapping */
+    word-break: break-word;    /* break very long words */
+    overflow-wrap: break-word;
     cursor: text;
+    line-height: 1.35;
   }
   .task-name.done-text { text-decoration: line-through; color: var(--text-muted); }
   .task-meta { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
   .task-meta span { font-size: 0.7rem; color: var(--text-muted); }
 
-  .task-progress-wrap { display: flex; align-items: center; gap: 8px; width: 120px; flex-shrink: 0; }
-  .progress-bar-bg { flex: 1; height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
-  .progress-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
-  .progress-pct { font-size: 0.7rem; font-family: 'Space Mono', monospace; color: var(--text-secondary); min-width: 28px; text-align: right; }
+  .task-progress-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .progress-bar-bg { display: none; } /* hidden — replaced by water-fill card background */
+  .progress-pct { font-size: 0.75rem; font-family: 'Space Mono', monospace; color: var(--text-secondary); min-width: 32px; text-align: right; font-weight: 700; }
 
   .task-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .task-select { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.72rem; padding: 4px 6px; cursor: pointer; font-family: 'Outfit', sans-serif; }
@@ -447,7 +464,7 @@
     .tab-summary { grid-template-columns: repeat(2, 1fr); }
     .dashboard-grid { grid-template-columns: 1fr; }
     .task-input-row { gap: 6px; }
-    .task-progress-wrap { display: none; }
+    .task-progress-wrap { display: flex; } /* keep % visible on mobile */
     .task-card { flex-wrap: wrap; }
   }
   @media (max-width: 480px) {
@@ -478,7 +495,7 @@
         <input type="file" accept=".json" id="import-input" style="display:none;" onchange="importData(this)">
       </label>
       <div style="height:1px;background:var(--border);margin:4px 0;"></div>
-      <button class="settings-item" onclick="showMentor(true)">
+      <button class="settings-item" onclick="showMentor(true, false)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
         Show Mentor
       </button>
@@ -691,14 +708,16 @@ function isOverdue(task) {
 function currentTab() { return state.tabs.find(t => t.id === state.currentTabId); }
 
 function sortTasks(tasks) {
-  const overdue = tasks.filter(isOverdue).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
-  const rest = tasks.filter(t => !isOverdue(t)).sort((a,b) => {
+  // Order: overdue → active (by due date) → done (always at bottom)
+  const overdue  = tasks.filter(t => isOverdue(t)).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+  const active   = tasks.filter(t => !isOverdue(t) && t.status !== 'Done').sort((a,b) => {
     if (!a.dueDate && !b.dueDate) return 0;
     if (!a.dueDate) return 1;
     if (!b.dueDate) return -1;
     return a.dueDate.localeCompare(b.dueDate);
   });
-  return [...overdue, ...rest];
+  const done     = tasks.filter(t => t.status === 'Done');
+  return [...overdue, ...active, ...done];
 }
 
 function statusClass(s) {
@@ -904,6 +923,8 @@ function updateTask(tabId, taskId, field, value) {
     const p = Math.min(100, Math.max(0, parseInt(value) || 0));
     task.progress = p;
     if (p === 100) task.status = 'Done';
+    else if (p > 0 && task.status === 'Pending') task.status = 'On Going'; // auto-promote
+    else if (p === 0 && task.status === 'On Going') task.status = 'Pending'; // auto-demote back
     else if (task.status === 'Done') task.status = 'On Going';
   } else if (field === 'name') {
     task.name = value;
@@ -1000,8 +1021,17 @@ function renderTasks() {
   el.innerHTML = sorted.map(task => {
     const over = isOverdue(task);
     const pColor = progressColor(task.progress);
+
+    // Water fill opacity and color based on progress
+    const fillOpacity = task.progress === 0 ? 0 : 0.10 + (task.progress / 100) * 0.10;
+    const fillColorRgb = task.progress >= 100 ? '34,211,160' :
+                         task.progress >= 60  ? '124,106,255' :
+                         task.progress >= 30  ? '249,115,22' : '255,77,109';
+    const fillColor = `rgba(${fillColorRgb},${fillOpacity})`;
+
     return `
-    <div class="task-card ${over ? 'overdue' : ''}" id="task-${task.id}" data-task-id="${task.id}">
+    <div class="task-card ${over ? 'overdue' : ''}" id="task-${task.id}" data-task-id="${task.id}"
+      style="--prog:${task.progress}%;--fill-color:${fillColor};">
       <div class="task-color-bar" style="background:${tab.color};"></div>
       <div class="task-main">
         <div class="task-name ${task.status === 'Done' ? 'done-text' : ''}" contenteditable="true"
@@ -1015,10 +1045,7 @@ function renderTasks() {
         </div>
       </div>
       <div class="task-progress-wrap">
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill" style="width:${task.progress}%;background:${pColor};"></div>
-        </div>
-        <span class="progress-pct">${task.progress}%</span>
+        <span class="progress-pct" style="color:${pColor}">${task.progress}%</span>
       </div>
       <div class="task-controls">
         <select class="task-select" onchange="updateTask('${tab.id}','${task.id}','status',this.value)">
@@ -1150,16 +1177,25 @@ function openCalendar() {
     if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
 
     const events = [];
+    const todayStr = new Date().toISOString().split('T')[0];
     state.tabs.forEach(tab => {
       tab.tasks.forEach(task => {
         if (task.dueDate) {
+          const isDone     = task.status === 'Done';
+          const isOverdueTask = !isDone && task.dueDate < todayStr;
+
           events.push({
             id: task.id,
-            title: task.name,
+            title: (isDone ? '✓ ' : isOverdueTask ? '⚠ ' : '') + task.name,
             start: task.dueDate,
-            backgroundColor: tab.color,
-            borderColor: tab.color,
-            extendedProps: { tabId: tab.id, taskId: task.id }
+            backgroundColor: isDone       ? 'rgba(80,80,100,0.4)'  // grey — done
+                           : isOverdueTask ? 'rgba(255,77,109,0.85)' // red — overdue
+                           : tab.color,                              // normal tab color
+            borderColor:     isDone       ? 'rgba(80,80,100,0.6)'
+                           : isOverdueTask ? '#ff4d6d'
+                           : tab.color,
+            textColor:       isDone       ? '#666688' : '#ffffff',
+            extendedProps: { tabId: tab.id, taskId: task.id, isDone, isOverdueTask }
           });
         }
       });
@@ -1169,6 +1205,17 @@ function openCalendar() {
       initialView: 'dayGridMonth',
       headerToolbar: { left: 'prev,next', center: 'title', right: 'dayGridMonth,listWeek' },
       events,
+      // Apply visual styles after events render
+      eventDidMount: function(info) {
+        if (info.event.extendedProps.isDone) {
+          info.el.style.textDecoration = 'line-through';
+          info.el.style.opacity = '0.55';
+        }
+        if (info.event.extendedProps.isOverdueTask) {
+          info.el.style.boxShadow = '0 0 0 2px rgba(255,77,109,0.5)';
+          info.el.style.fontWeight = '700';
+        }
+      },
       eventClick: function(info) {
         const { tabId, taskId } = info.event.extendedProps;
         closeModal('calendar-modal');
@@ -1202,47 +1249,124 @@ function teleportToTask(tabId, taskId) {
 // ─── MENTOR ───────────────────────────────────────────────────────────────────
 function checkMentor() {
   const now = new Date();
-  const day = now.getDay(); // 0=Sun, 1=Mon
-  const date = now.getDate();
-  const isMonday = day === 1;
-  const isFirstOfMonth = date === 1;
+  const todayStr = now.toISOString().split('T')[0];
+  const isFirstOfMonth = now.getDate() === 1;
 
-  const lastChecked = state.lastChecked ? new Date(state.lastChecked) : null;
-  const isNew = !lastChecked ||
-    (isMonday && lastChecked.getDay() !== 1) ||
-    (isFirstOfMonth && lastChecked.getDate() !== 1);
+  const lastShown = state.lastChecked || null;
 
-  if (isNew || isMonday || isFirstOfMonth) {
+  // Show if: never shown before, OR last shown was a different calendar day
+  const shouldShow = !lastShown || lastShown.split('T')[0] !== todayStr;
+
+  if (shouldShow) {
     state.lastChecked = now.toISOString();
     saveState();
-    showMentor(false);
+    showMentor(false, isFirstOfMonth);
   }
 }
 
-function showMentor(forceShow) {
-  const allTasks = state.tabs.flatMap(t => t.tasks);
-  const recentDone = allTasks.filter(t => t.status === 'Done').length;
-  const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
-
+function showMentor(forceShow, isEndOfMonth) {
   const now = new Date();
-  const isMonday = now.getDay() === 1;
+  const todayStr = now.toISOString().split('T')[0];
+
+  // Yesterday's date string
+  const yd = new Date(now);
+  yd.setDate(yd.getDate() - 1);
+  const yesterdayStr = yd.toISOString().split('T')[0];
+
+  const allTasks = state.tabs.flatMap(t =>
+    t.tasks.map(task => ({ ...task, tabName: t.name, tabColor: t.color }))
+  );
+
+  // Tasks marked Done with dateAdded = yesterday (best proxy we have)
+  // We also include tasks that became Done regardless of date since we don't store completion date
+  const yesterdayDone = allTasks.filter(t =>
+    t.status === 'Done' && (t.dateAdded === yesterdayStr || t.dueDate === yesterdayStr)
+  );
+
+  // Today's pending / ongoing tasks (due today or no due date, not done)
+  const todayPending = allTasks.filter(t =>
+    t.status !== 'Done' && (!t.dueDate || t.dueDate >= todayStr)
+  );
+
+  // Overdue tasks
+  const overdue = allTasks.filter(t => t.status !== 'Done' && t.dueDate && t.dueDate < todayStr);
+
+  const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
   const isFirst = now.getDate() === 1;
-  let trigger = forceShow ? 'your request' : isFirst ? 'a new month' : isMonday ? 'a new week' : 'your journey';
+  const allDoneCount = allTasks.filter(t => t.status === 'Done').length;
+
+  // Build yesterday done list HTML
+  const doneSectionHtml = yesterdayDone.length > 0 ? `
+    <div style="margin-bottom:16px;">
+      <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✅ Completed Yesterday</div>
+      ${yesterdayDone.slice(0, 5).map(t => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(34,211,160,0.07);border-radius:8px;margin-bottom:4px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${t.tabColor};flex-shrink:0;"></span>
+          <span style="font-size:0.82rem;color:#22d3a0;text-decoration:line-through;opacity:0.8;">${escHtml(t.name)}</span>
+          <span style="font-size:0.68rem;color:var(--text-muted);margin-left:auto;">${t.tabName}</span>
+        </div>
+      `).join('')}
+      ${yesterdayDone.length > 5 ? `<div style="font-size:0.72rem;color:var(--text-muted);text-align:center;margin-top:4px;">+${yesterdayDone.length - 5} more</div>` : ''}
+    </div>
+  ` : '';
+
+  // Build today's tasks list HTML
+  const todaySectionHtml = todayPending.length > 0 ? `
+    <div style="margin-bottom:16px;">
+      <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📋 On Your Plate Today</div>
+      ${todayPending.slice(0, 5).map(t => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-elevated);border-radius:8px;margin-bottom:4px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${t.tabColor};flex-shrink:0;"></span>
+          <span style="font-size:0.82rem;flex:1;">${escHtml(t.name)}</span>
+          <span style="font-size:0.68rem;color:var(--text-muted);">${t.tabName}</span>
+          ${t.dueDate === todayStr ? `<span style="font-size:0.65rem;background:rgba(245,166,35,0.2);color:#f5a623;padding:1px 6px;border-radius:4px;">Due today</span>` : ''}
+        </div>
+      `).join('')}
+      ${todayPending.length > 5 ? `<div style="font-size:0.72rem;color:var(--text-muted);text-align:center;margin-top:4px;">+${todayPending.length - 5} more tasks</div>` : ''}
+    </div>
+  ` : `<div style="font-size:0.85rem;color:var(--success);text-align:center;padding:12px;background:rgba(34,211,160,0.07);border-radius:10px;margin-bottom:16px;">🎉 Nothing pending — you're all clear!</div>`;
+
+  // Overdue warning
+  const overdueSectionHtml = overdue.length > 0 ? `
+    <div style="margin-bottom:16px;padding:10px 14px;background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);border-radius:10px;">
+      <div style="font-size:0.72rem;color:var(--danger);font-weight:700;margin-bottom:4px;">⚠️ ${overdue.length} Overdue Task${overdue.length > 1 ? 's' : ''}</div>
+      ${overdue.slice(0, 3).map(t => `<div style="font-size:0.78rem;color:var(--text-secondary);">• ${escHtml(t.name)} <span style="color:var(--danger)">(${t.dueDate})</span></div>`).join('')}
+    </div>
+  ` : '';
+
+  // End-of-month summary (kept as requested)
+  const monthSummaryHtml = isFirst ? `
+    <div style="background:var(--bg-elevated);border-radius:12px;padding:14px;margin-bottom:16px;text-align:center;border:1px solid var(--border-bright);">
+      <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">🗓 Monthly Summary</div>
+      <div style="font-size:2rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--success);">${allDoneCount}</div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">Total tasks completed — great month! 💪</div>
+    </div>
+  ` : '';
+
+  const greeting = (() => {
+    const h = now.getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  })();
 
   document.getElementById('mentor-body').innerHTML = `
     <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:3rem;margin-bottom:8px;">🌟</div>
-      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">
-        ${trigger === 'your request' ? 'Mentor Report' : `New ${isFirst ? 'Month' : 'Week'} — Let's Go!`}
+      <div style="font-size:2.5rem;margin-bottom:6px;">${isFirst ? '🏆' : '🌅'}</div>
+      <div style="font-size:1rem;font-weight:700;">${greeting}!</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">
+        ${isFirst ? "New month, new goals." : `Here's your daily briefing`}
       </div>
     </div>
-    <div style="background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
-      <div style="font-size:2.2rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--success);">${recentDone}</div>
-      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">Tasks completed so far! Keep going. 💪</div>
-    </div>
+
+    ${monthSummaryHtml}
+    ${doneSectionHtml}
+    ${overdueSectionHtml}
+    ${todaySectionHtml}
+
     <blockquote class="mentor-quote">"${quote.text}"</blockquote>
     <div class="mentor-author">— ${quote.author}</div>
-    <button onclick="closeModal('mentor-modal')" style="margin-top:24px;width:100%;background:linear-gradient(135deg,#7c6aff,#a855f7);border:none;border-radius:10px;color:white;font-family:'Outfit',sans-serif;font-weight:600;font-size:0.9rem;padding:12px;cursor:pointer;">Let's Do This! 🚀</button>
+    <button onclick="closeModal('mentor-modal')" style="margin-top:20px;width:100%;background:linear-gradient(135deg,#7c6aff,#a855f7);border:none;border-radius:10px;color:white;font-family:'Outfit',sans-serif;font-weight:600;font-size:0.9rem;padding:12px;cursor:pointer;">Let's Do This! 🚀</button>
   `;
   openModal('mentor-modal');
 }
