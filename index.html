@@ -306,9 +306,6 @@
   .task-select { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.72rem; padding: 4px 6px; cursor: pointer; font-family: 'Outfit', sans-serif; }
   .task-prog-input { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.72rem; padding: 4px 6px; width: 54px; font-family: 'Space Mono', monospace; }
   
-  .task-pin-btn { background: transparent; border: none; cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px; transition: all 0.1s; }
-  .task-pin-btn:hover { background: var(--bg-elevated); transform: scale(1.1); }
-  
   .task-delete-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px; transition: all 0.1s; }
   .task-delete-btn:hover { background: var(--danger-glow); color: var(--danger); }
 
@@ -944,6 +941,10 @@ function updateTask(tabId, taskId, field, value) {
   const wasDone = task.status === 'Done';
 
   if (field === 'status') {
+    if (value === 'Toggle Pin') {
+      togglePin(tabId, taskId);
+      return; 
+    }
     task.status = value;
     if (value === 'Done') {
       task.progress = 100;
@@ -1091,11 +1092,9 @@ function renderTasks() {
         </div>
       </div>
       <div class="task-controls">
-        <button class="task-pin-btn" onclick="togglePin('${tab.id}','${task.id}')" title="${isPinned ? 'Unpin' : 'Pin task'}" style="opacity: ${isPinned ? '1' : '0.4'};">
-          📌
-        </button>
         <select class="task-select" onchange="updateTask('${tab.id}','${task.id}','status',this.value)">
-          ${STATUS_LIST.map(s => `<option ${s === task.status ? 'selected' : ''}>${s}</option>`).join('')}
+          ${STATUS_LIST.map(s => `<option value="${s}" ${s === task.status ? 'selected' : ''}>${s}</option>`).join('')}
+          <option value="Toggle Pin">${isPinned ? 'Unpin 📌' : 'Pin 📌'}</option>
         </select>
         <input type="number" class="task-prog-input" value="${task.progress}" min="0" max="100"
           onchange="updateTask('${tab.id}','${task.id}','progress',this.value)"
