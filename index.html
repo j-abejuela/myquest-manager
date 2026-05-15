@@ -25,6 +25,7 @@
     --accent-glow: rgba(124,106,255,0.25);
     --success: #22d3a0;
     --warning: #f5a623;
+    --warning-glow: rgba(245,166,35,0.3);
     --danger: #ff4d6d;
     --danger-glow: rgba(255,77,109,0.2);
   }
@@ -221,7 +222,7 @@
     overflow: hidden;
   }
 
-  /* Water-fill: a pseudo-element fills left→right based on CSS variable --prog */
+  /* Water-fill */
   .task-card::after {
     content: '';
     position: absolute;
@@ -234,10 +235,16 @@
     z-index: 0;
   }
 
-  /* All direct children sit above the fill layer */
   .task-card > * { position: relative; z-index: 1; }
 
   .task-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
+  
+  /* Pinned styling */
+  .task-card.pinned {
+    border-color: var(--warning);
+    box-shadow: 0 0 10px var(--warning-glow);
+  }
+
   .task-card.overdue {
     border-color: var(--danger) !important;
     background: linear-gradient(135deg, var(--bg-card) 0%, rgba(255,77,109,0.06) 100%);
@@ -254,6 +261,7 @@
     padding: 2px 8px;
     border-radius: 0 12px 0 8px;
     font-family: 'Space Mono', monospace;
+    z-index: 2;
   }
   .task-card.flash-highlight {
     animation: flashPulse 2s ease-out;
@@ -270,7 +278,7 @@
     flex: 1;
     min-width: 0;
     display: flex;
-    flex-direction: column;  /* name on top, dates below — never overlapping */
+    flex-direction: column;
     gap: 3px;
   }
   .task-name {
@@ -292,12 +300,15 @@
   .task-meta span { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
 
   .task-progress-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-  .progress-bar-bg { display: none; } /* hidden — replaced by water-fill card background */
   .progress-pct { font-size: 0.75rem; font-family: 'Space Mono', monospace; color: var(--text-secondary); min-width: 32px; text-align: right; font-weight: 700; }
 
   .task-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .task-select { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.72rem; padding: 4px 6px; cursor: pointer; font-family: 'Outfit', sans-serif; }
   .task-prog-input { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.72rem; padding: 4px 6px; width: 54px; font-family: 'Space Mono', monospace; }
+  
+  .task-pin-btn { background: transparent; border: none; cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px; transition: all 0.1s; }
+  .task-pin-btn:hover { background: var(--bg-elevated); transform: scale(1.1); }
+  
   .task-delete-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px; transition: all 0.1s; }
   .task-delete-btn:hover { background: var(--danger-glow); color: var(--danger); }
 
@@ -719,9 +730,14 @@ function isOverdue(task) {
 function currentTab() { return state.tabs.find(t => t.id === state.currentTabId); }
 
 function sortTasks(tasks) {
-  // Order: overdue → active (by due date) → done (always at bottom)
+  // Order: overdue → pinned (active) → active (by due date) → done (always at bottom)
   const overdue  = tasks.filter(t => isOverdue(t)).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
   const active   = tasks.filter(t => !isOverdue(t) && t.status !== 'Done').sort((a,b) => {
+    // Sort by pinned first
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    
+    // Then by due date
     if (!a.dueDate && !b.dueDate) return 0;
     if (!a.dueDate) return 1;
     if (!b.dueDate) return -1;
@@ -844,7 +860,6 @@ function confirmInlineTab() {
   renderAll();
 }
 
-// legacy alias (settings still calls addTab via mentor)
 function addTab() { showInlineTabCreator(); }
 
 function deleteTab(id) {
@@ -902,7 +917,8 @@ function addTask() {
     dateAdded: today(),
     dueDate: document.getElementById('new-task-due').value || '',
     status,
-    progress
+    progress,
+    isPinned: false
   };
 
   tab.tasks.push(task);
@@ -929,13 +945,19 @@ function updateTask(tabId, taskId, field, value) {
 
   if (field === 'status') {
     task.status = value;
-    if (value === 'Done') task.progress = 100;
+    if (value === 'Done') {
+      task.progress = 100;
+      task.isPinned = false;
+    }
   } else if (field === 'progress') {
     const p = Math.min(100, Math.max(0, parseInt(value) || 0));
     task.progress = p;
-    if (p === 100) task.status = 'Done';
-    else if (p > 0 && task.status === 'Pending') task.status = 'On Going'; // auto-promote
-    else if (p === 0 && task.status === 'On Going') task.status = 'Pending'; // auto-demote back
+    if (p === 100) {
+      task.status = 'Done';
+      task.isPinned = false;
+    }
+    else if (p > 0 && task.status === 'Pending') task.status = 'On Going'; 
+    else if (p === 0 && task.status === 'On Going') task.status = 'Pending'; 
     else if (task.status === 'Done') task.status = 'On Going';
   } else if (field === 'name') {
     task.name = value;
@@ -950,6 +972,17 @@ function updateTask(tabId, taskId, field, value) {
     fireConfetti();
     playSuccessDing();
   }
+}
+
+function togglePin(tabId, taskId) {
+  const tab = state.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const task = tab.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  
+  task.isPinned = !task.isPinned;
+  saveState();
+  renderTasks();
 }
 
 function deleteTask(tabId, taskId) {
@@ -1032,6 +1065,7 @@ function renderTasks() {
   el.innerHTML = sorted.map(task => {
     const over = isOverdue(task);
     const pColor = progressColor(task.progress);
+    const isPinned = !!task.isPinned;
 
     // Water fill opacity and color based on progress
     const fillOpacity = task.progress === 0 ? 0 : 0.10 + (task.progress / 100) * 0.10;
@@ -1041,7 +1075,7 @@ function renderTasks() {
     const fillColor = `rgba(${fillColorRgb},${fillOpacity})`;
 
     return `
-    <div class="task-card ${over ? 'overdue' : ''}" id="task-${task.id}" data-task-id="${task.id}"
+    <div class="task-card ${over ? 'overdue' : ''} ${isPinned ? 'pinned' : ''}" id="task-${task.id}" data-task-id="${task.id}"
       style="--prog:${task.progress}%;--fill-color:${fillColor};">
       <div class="task-color-bar" style="background:${tab.color};"></div>
       <div class="task-main">
@@ -1057,6 +1091,9 @@ function renderTasks() {
         </div>
       </div>
       <div class="task-controls">
+        <button class="task-pin-btn" onclick="togglePin('${tab.id}','${task.id}')" title="${isPinned ? 'Unpin' : 'Pin task'}" style="opacity: ${isPinned ? '1' : '0.4'};">
+          📌
+        </button>
         <select class="task-select" onchange="updateTask('${tab.id}','${task.id}','status',this.value)">
           ${STATUS_LIST.map(s => `<option ${s === task.status ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
@@ -1086,7 +1123,6 @@ function renderDashboard() {
   const ongoing = allTasks.filter(t => t.status === 'On Going').length;
   const pending = allTasks.filter(t => t.status === 'Pending').length;
 
-  // Global bar chart by tab
   const labels = state.tabs.map(t => t.name);
   const completionData = state.tabs.map(t => {
     const tasks = t.tasks;
@@ -1121,7 +1157,6 @@ function renderDashboard() {
     }
   });
 
-  // Status doughnut
   const scCtx = document.getElementById('status-chart').getContext('2d');
   if (statusChart) statusChart.destroy();
   statusChart = new Chart(scCtx, {
@@ -1137,7 +1172,6 @@ function renderDashboard() {
     }
   });
 
-  // Tab completion polar
   const tcCtx = document.getElementById('tab-chart').getContext('2d');
   if (tabChart) tabChart.destroy();
   tabChart = new Chart(tcCtx, {
@@ -1190,21 +1224,22 @@ function openCalendar() {
     state.tabs.forEach(tab => {
       tab.tasks.forEach(task => {
         if (task.dueDate) {
-          const isDone     = task.status === 'Done';
+          const isDone      = task.status === 'Done';
           const isOverdueTask = !isDone && task.dueDate < todayStr;
+          const isPinned    = !!task.isPinned;
 
           events.push({
             id: task.id,
             title: (isDone ? '✓ ' : isOverdueTask ? '⚠ ' : '') + task.name,
             start: task.dueDate,
-            backgroundColor: isDone       ? 'rgba(80,80,100,0.4)'  // grey — done
-                           : isOverdueTask ? 'rgba(255,77,109,0.85)' // red — overdue
-                           : tab.color,                              // normal tab color
+            backgroundColor: isDone       ? 'rgba(80,80,100,0.4)'
+                           : isOverdueTask ? 'rgba(255,77,109,0.85)'
+                           : tab.color,
             borderColor:     isDone       ? 'rgba(80,80,100,0.6)'
                            : isOverdueTask ? '#ff4d6d'
                            : tab.color,
             textColor:       isDone       ? '#666688' : '#ffffff',
-            extendedProps: { tabId: tab.id, taskId: task.id, isDone, isOverdueTask }
+            extendedProps: { tabId: tab.id, taskId: task.id, isDone, isOverdueTask, isPinned }
           });
         }
       });
@@ -1214,7 +1249,7 @@ function openCalendar() {
       initialView: 'dayGridMonth',
       headerToolbar: { left: 'prev,next', center: 'title', right: 'dayGridMonth,listWeek' },
       events,
-      // Apply visual styles after events render
+      // Apply visual styles and pin icons after events render
       eventDidMount: function(info) {
         if (info.event.extendedProps.isDone) {
           info.el.style.textDecoration = 'line-through';
@@ -1223,6 +1258,18 @@ function openCalendar() {
         if (info.event.extendedProps.isOverdueTask) {
           info.el.style.boxShadow = '0 0 0 2px rgba(255,77,109,0.5)';
           info.el.style.fontWeight = '700';
+        }
+        if (info.event.extendedProps.isPinned) {
+          const pinEl = document.createElement('div');
+          pinEl.textContent = '📌';
+          pinEl.style.position = 'absolute';
+          pinEl.style.top = '-2px';
+          pinEl.style.right = '-2px';
+          pinEl.style.fontSize = '10px';
+          pinEl.style.zIndex = '10';
+          
+          info.el.style.overflow = 'visible'; // allow pin to be slightly outside bounds
+          info.el.appendChild(pinEl);
         }
       },
       eventClick: function(info) {
@@ -1238,13 +1285,11 @@ function openCalendar() {
 }
 
 function teleportToTask(tabId, taskId) {
-  // Switch view and tab
   switchView('tasks');
   state.currentTabId = tabId;
   saveState();
   renderAll();
 
-  // Scroll and flash
   setTimeout(() => {
     const el = document.getElementById(`task-${taskId}`);
     if (el) {
@@ -1262,8 +1307,6 @@ function checkMentor() {
   const isFirstOfMonth = now.getDate() === 1;
 
   const lastShown = state.lastChecked || null;
-
-  // Show if: never shown before, OR last shown was a different calendar day
   const shouldShow = !lastShown || lastShown.split('T')[0] !== todayStr;
 
   if (shouldShow) {
@@ -1277,7 +1320,6 @@ function showMentor(forceShow, isEndOfMonth) {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
 
-  // Yesterday's date string
   const yd = new Date(now);
   yd.setDate(yd.getDate() - 1);
   const yesterdayStr = yd.toISOString().split('T')[0];
@@ -1286,25 +1328,20 @@ function showMentor(forceShow, isEndOfMonth) {
     t.tasks.map(task => ({ ...task, tabName: t.name, tabColor: t.color }))
   );
 
-  // Tasks marked Done with dateAdded = yesterday (best proxy we have)
-  // We also include tasks that became Done regardless of date since we don't store completion date
   const yesterdayDone = allTasks.filter(t =>
     t.status === 'Done' && (t.dateAdded === yesterdayStr || t.dueDate === yesterdayStr)
   );
 
-  // Today's pending / ongoing tasks (due today or no due date, not done)
   const todayPending = allTasks.filter(t =>
     t.status !== 'Done' && (!t.dueDate || t.dueDate >= todayStr)
   );
 
-  // Overdue tasks
   const overdue = allTasks.filter(t => t.status !== 'Done' && t.dueDate && t.dueDate < todayStr);
 
   const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
   const isFirst = now.getDate() === 1;
   const allDoneCount = allTasks.filter(t => t.status === 'Done').length;
 
-  // Build yesterday done list HTML
   const doneSectionHtml = yesterdayDone.length > 0 ? `
     <div style="margin-bottom:16px;">
       <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✅ Completed Yesterday</div>
@@ -1319,7 +1356,6 @@ function showMentor(forceShow, isEndOfMonth) {
     </div>
   ` : '';
 
-  // Build today's tasks list HTML
   const todaySectionHtml = todayPending.length > 0 ? `
     <div style="margin-bottom:16px;">
       <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📋 On Your Plate Today</div>
@@ -1335,7 +1371,6 @@ function showMentor(forceShow, isEndOfMonth) {
     </div>
   ` : `<div style="font-size:0.85rem;color:var(--success);text-align:center;padding:12px;background:rgba(34,211,160,0.07);border-radius:10px;margin-bottom:16px;">🎉 Nothing pending — you're all clear!</div>`;
 
-  // Overdue warning
   const overdueSectionHtml = overdue.length > 0 ? `
     <div style="margin-bottom:16px;padding:10px 14px;background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);border-radius:10px;">
       <div style="font-size:0.72rem;color:var(--danger);font-weight:700;margin-bottom:4px;">⚠️ ${overdue.length} Overdue Task${overdue.length > 1 ? 's' : ''}</div>
@@ -1343,7 +1378,6 @@ function showMentor(forceShow, isEndOfMonth) {
     </div>
   ` : '';
 
-  // End-of-month summary (kept as requested)
   const monthSummaryHtml = isFirst ? `
     <div style="background:var(--bg-elevated);border-radius:12px;padding:14px;margin-bottom:16px;text-align:center;border:1px solid var(--border-bright);">
       <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">🗓 Monthly Summary</div>
@@ -1388,7 +1422,6 @@ function closeModal(id) {
   document.getElementById(id).style.display = 'none';
 }
 
-// Close on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', function(e) {
     if (e.target === this) closeModal(this.id);
@@ -1464,7 +1497,6 @@ function init() {
   updateWeekIndicator();
   renderAll();
 
-  // Set today as default date added display
   setTimeout(() => checkMentor(), 800);
 }
 
